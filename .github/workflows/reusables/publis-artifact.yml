@@ -1,0 +1,26 @@
+on:
+  workflow_call:
+    inputs:
+      acr_name: { type: string, required: true }
+      image_name: { type: string, required: true }
+    secrets:
+      AZURE_CREDENTIALS: { required: true }
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      # Login en Azure
+      - name: Azure Login
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      # Stage 6, 9 y 10: Docker Build & Push
+      - name: Build and Push to ACR
+        run: |
+          az acr login --name ${{ inputs.acr_name }}
+          docker build -t ${{ inputs.acr_name }}.azurecr.io/${{ inputs.image_name }}:${{ github.sha }} .
+          docker push ${{ inputs.acr_name }}.azurecr.io/${{ inputs.image_name }}:${{ github.sha }}
