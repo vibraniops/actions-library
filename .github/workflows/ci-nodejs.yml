@@ -13,7 +13,7 @@ on:
 
 jobs:
   scan:
-    uses: ./.github/workflows/reusable/build-scan-quality.yml
+    uses: ./.github/workflows/build-scan-quality.yml
     with:
       skip_test: ${{ inputs.skip_test }}
     secrets:
@@ -21,7 +21,7 @@ jobs:
 
   publish:
     needs: scan # Solo publica si el scan pasa (Quality Gate)
-    uses: ./.github/workflows/reusable/publish-artifact.yml
+    uses: ./.github/workflows/publish-artifact.yml
     with:
       acr_name: ${{ inputs.acr_name }}
       image_name: ${{ inputs.project_name }}
