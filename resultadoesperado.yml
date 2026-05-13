@@ -1,0 +1,89 @@
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: palo-points-pro
+  namespace: 819347905994
+  selfLink: /apis/serving.knative.dev/v1/namespaces/819347905994/services/palo-points-pro
+  uid: dd1e6517-989f-43f1-9ebe-d40bc7f1dd89
+  resourceVersion: AAZRtqtuY68
+  generation: 61
+  creationTimestamp: "2023-03-03T18:10:31.007156Z"
+  labels:
+    cloud.googleapis.com/location: us-central1
+  annotations:
+    serving.knative.dev/creator: sa-deploy-palopoints@palo-points.iam.gserviceaccount.com
+    serving.knative.dev/lastModifier: @palo-it.com
+    client.knative.dev/user-image: us.gcr.io/paloit-devops/gcf/nginx-deploy:latest
+    run.googleapis.com/client-name: cloud-console
+    run.googleapis.com/operation-id: 1711742c-46b1-4d7f-a908-0496235a14ea
+    run.googleapis.com/ingress: all
+    run.googleapis.com/ingress-status: all
+    run.googleapis.com/minScale: 1
+    run.googleapis.com/urls: "[\"https://palo-points-pro-819347905994.us-central1.run.app\"\
+      ,\"https://palo-points-pro-hnpk7kzneq-uc.a.run.app\"]"
+spec:
+  template:
+    metadata:
+      name: palo-points-pro-201-1778603398
+      labels:
+        run.googleapis.com/startupProbeType: Default
+      annotations:
+        autoscaling.knative.dev/maxScale: 100
+        autoscaling.knative.dev/minScale: 1
+        client.knative.dev/user-image: us.gcr.io/paloit-devops/gcf/nginx-deploy:latest
+        run.googleapis.com/client-name: gcloud
+        run.googleapis.com/client-version: 363.0.0
+        run.googleapis.com/startup-cpu-boost: "false"
+    spec:
+      containerConcurrency: 80
+      timeoutSeconds: 300
+      serviceAccountName: sa-deploy-palopoints@palo-points.iam.gserviceaccount.com
+      containers:
+      - name: nginx-deploy-1
+        image: us.gcr.io/paloit-devops/gcf/nginx-deploy:latest
+        ports:
+        - name: http1
+          containerPort: 8080
+        env:
+        - name: nexus_user
+          value: user
+        - name: nexus_password
+          value: fsfdsfsfsfdsfds
+        - name: ARTIFACT_URL
+          value: http://nexus.gcp.palo-it.net/repository/nodejs-release/customer-projects/palo-points/frontend/frontend-pro/frontend-1.0.0-release-201.zip
+        - name: FILE_NAME_ARTIFACT
+          value: frontend-1.0.0-201.zip
+        resources:
+          limits:
+            cpu: 1
+            memory: 1Gi
+        startupProbe:
+          timeoutSeconds: 240
+          periodSeconds: 240
+          failureThreshold: 1
+          tcpSocket:
+            port: 8080
+  traffic:
+  - percent: 100
+    latestRevision: true
+status:
+  observedGeneration: 61
+  conditions:
+  - type: Ready
+    status: "True"
+    lastTransitionTime: "2026-05-13T17:54:22.300079Z"
+  - type: ConfigurationsReady
+    status: "True"
+    lastTransitionTime: "2026-05-13T17:54:21.042585Z"
+  - type: RoutesReady
+    status: "True"
+    lastTransitionTime: "2026-05-13T17:54:22.259773Z"
+  latestReadyRevisionName: palo-points-pro-201-1778603398
+  latestCreatedRevisionName: palo-points-pro-201-1778603398
+  traffic:
+  - revisionName: palo-points-pro-201-1778603398
+    percent: 100
+    latestRevision: true
+  url: https://palo-points-pro-hnpk7kzneq-uc.a.run.app
+  address:
+    url: https://palo-points-pro-hnpk7kzneq-uc.a.run.app

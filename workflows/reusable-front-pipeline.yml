@@ -1,0 +1,258 @@
+name: "NodeJS Reusable Pipeline"
+
+on:
+  workflow_call:
+    inputs:
+      NODEJS_VERSION:
+        type: string
+        default: "20"
+        description: "Node Version to make the build"
+      IS_RELEASE:
+        type: boolean
+        default: false
+        description: "Check if is a Release Build"
+      SKIP_BUILD:
+        type: boolean
+        default: false
+        description: "Indicates if Build Stage must be skipped"
+      FORCED_ARTIFACT_URL:
+        type: string
+        default: ""
+        description: "Use only in case than you selected skip build"
+      GIT_RELEASE_BRANCH:
+        type: string
+        default: "master"
+        description: "Gitlab Release Branch (Legacy reference)"
+      GIT_INTEGRATION_BRANCH:
+        type: string
+        default: "develop"
+        description: "Gitlab Integration Branch (Legacy reference)"
+      GET_DEPENDENCIES_COMMAND:
+        type: string
+        default: "npm ci"
+        description: "Custom command to get Dependencies"
+      BUILD_COMMAND:
+        type: string
+        default: "npm run build"
+        description: "Custom Build command"
+      APP_OUTPUT_PATH:
+        type: string
+        default: "dist"
+        description: "Code Output directory"
+      SKIP_HORUSEC:
+        type: boolean
+        default: false
+        description: "Check if you want Skip Horusec scan stage"
+      HORUSEC_EXCLUSIONS:
+        type: string
+        default: ""
+        description: "Folders to discard from Horusec analysis, separated by commas"
+      HORUSEC_FALSE_POSITIVES:
+        type: string
+        default: ""
+        description: "Hashes to consider as false positives in Horusec analysis, separated by commas"
+      HORUSEC_ACCEPTED_RISKS:
+        type: string
+        default: ""
+        description: "Hashes to consider as accepted risks in Horusec analysis, separated by commas"
+      SKIP_TEST:
+        type: boolean
+        default: true
+        description: "Check if you want Skip Unit Test stage"
+      TEST_COMMAND:
+        type: string
+        default: "npm test"
+        description: "Custom Unit Test command"
+      DEPLOY_TYPE:
+        type: string
+        default: "NONE"
+        description: "Type of Deploy (CLOUD_RUN legacy maps to Azure Container Apps)"
+      ENVIRONMENT:
+        type: string
+        required: true
+        description: "Target environment (dev, stg, pro)"
+      PROJECT_NAME:
+        type: string
+        required: true
+        description: "Name of the project"
+      AZURE_CONTAINER_APP_NAME:
+        type: string
+        required: true
+        description: "Name of the target Azure Container App"
+      AZURE_RESOURCE_GROUP:
+        type: string
+        required: true
+        description: "Azure Resource Group"
+      AZURE_CONTAINER_REGISTRY:
+        type: string
+        required: true
+        description: "Azure Container Registry domain (e.g., myregistry.azurecr.io)"
+    secrets:
+      AZURE_CREDENTIALS:
+        required: true
+      NEXUS_USER:
+        required: true
+      NEXUS_PASSWORD:
+        required: true
+      SONAR_TOKEN:
+        required: true
+      MS_TEAMS_HOOK:
+        required: false
+
+jobs:
+  ci-cd-process:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.ENVIRONMENT }}
+    steps:
+      # STAGE 0: Set Dynamic Environment variables based on IS_RELEASE (Legacy Groovy logic)
+      - name: "Stage 0: Calculate Dynamic Environment"
+        id: env_calc
+        run: |
+          if [ "${{ inputs.IS_RELEASE }}" = "true" ]; then
+            echo "NEXUS_REPO=repository/nodejs-release" >> $GITHUB_ENV
+            echo "DEPLOY_BRANCH=pro" >> $GITHUB_ENV
+          else
+            echo "NEXUS_REPO=repository/nodejs-snapshot" >> $GITHUB_ENV
+            echo "DEPLOY_BRANCH=${{ inputs.ENVIRONMENT }}" >> $GITHUB_ENV
+          fi
+          # Unique revision suffix creation (Legacy Jenkins logic)
+          echo "REVISION_SUFFIX=${{ github.run_number }}-$(date +%s)" >> $GITHUB_ENV
+
+      # STAGE 1 & 2: Checkout SCM and Setup Node.js Environment
+      - name: "Stage 1 & 2: Checkout and Setup Node"
+        uses: actions/checkout@v4
+
+      - name: "Setup Node.js v${{ inputs.NODEJS_VERSION }}"
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.NODEJS_VERSION }}
+
+      # STAGE 3: Config loading
+      - name: "Stage 3: Load Config"
+        id: load_config
+        run: |
+          CONFIG_FILE=".deploy/${{ env.DEPLOY_BRANCH }}/deploy-properties.json"
+          if [ -f "$CONFIG_FILE" ]; then
+            echo "Config file found. Loading parameters..."
+            # Parseamos el JSON a formato clave=valor compatible con Azure CLI
+            ENV_VARS=$(jq -r 'to_entries | map("\(.key)=\(.value|tostring)") | join(" ")' "$CONFIG_FILE")
+            echo "DYNAMIC_ENV_VARS=$ENV_VARS" >> $GITHUB_ENV
+          else
+            echo "Warning: Config file $CONFIG_FILE not found."
+            echo "DYNAMIC_ENV_VARS=" >> $GITHUB_ENV
+          fi
+
+      # STAGE 4: Horusec SAST Scan
+      - name: "Stage 4: Horusec SAST Scan"
+        if: ${{ inputs.SKIP_HORUSEC == false }}
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/ZupIT/horusec/main/deployments/scripts/install.sh | bash -s latest
+          horusec start \
+            --ignore="${{ inputs.HORUSEC_EXCLUSIONS }}" \
+            --false-positive="${{ inputs.HORUSEC_FALSE_POSITIVES }}" \
+            --risk-accept="${{ inputs.HORUSEC_ACCEPTED_RISKS }}" \
+            --analysis-timeout=300
+
+      # STAGE 5: Install Dependencies
+      - name: "Stage 5: Install Dependencies"
+        run: ${{ inputs.GET_DEPENDENCIES_COMMAND }}
+
+      # STAGE 6: Compile Application
+      - name: "Stage 6: Compile"
+        if: ${{ inputs.SKIP_BUILD == false }}
+        run: ${{ inputs.BUILD_COMMAND }}
+
+      # STAGE 7: Unit Test Application
+      - name: "Stage 7: Unit Test"
+        if: ${{ inputs.SKIP_TEST == false }}
+        run: ${{ inputs.TEST_COMMAND }}
+
+      # STAGE 8: SonarQube Analysis
+      - name: "Stage 8: SonarQube Analysis"
+        if: ${{ inputs.SKIP_BUILD == false }}
+        uses: sonarsource/sonarqube-scan-action@v3
+        with:
+          args: >
+            -Dsonar.projectKey=${{ inputs.PROJECT_NAME }}
+            -Dsonar.projectName=${{ inputs.PROJECT_NAME }}
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+
+      # STAGE 9: Compressing Files (No Dockerfile context)
+      - name: "Stage 9: Compressing Files"
+        if: ${{ inputs.SKIP_BUILD == false }}
+        run: |
+          mkdir -p _app
+          cp package.json _app/ || true
+          cp -r ${{ inputs.APP_OUTPUT_PATH }}/* _app/ || true
+          
+          FILE_NAME="frontend-1.0.0-${{ env.REVISION_SUFFIX }}.zip"
+          cd _app && zip -r ../$FILE_NAME . && cd ..
+          
+          echo "ARTIFACT_FILE_NAME=$FILE_NAME" >> $GITHUB_ENV
+          echo "LOCAL_ZIP_PATH=$(pwd)/$FILE_NAME" >> $GITHUB_ENV
+
+      # STAGE 10: Upload Artifacts to Nexus
+      - name: "Stage 10: Upload Artifacts to Nexus"
+        if: ${{ inputs.SKIP_BUILD == false }}
+        run: |
+          NEXUS_BASE_URL="http://nexus.gcp.palo-it.net" # URL Base real de Nexus
+          FULL_ARTIFACT_URL="${NEXUS_BASE_URL}/${{ env.NEXUS_REPO }}/customer-projects/${{ inputs.PROJECT_NAME }}/frontend/${{ env.ARTIFACT_FILE_NAME }}"
+          
+          echo "Uploading $ARTIFACT_FILE_NAME to Nexus..."
+          
+          curl -v -u "${{ secrets.NEXUS_USER }}:${{ secrets.NEXUS_PASSWORD }}" \
+            --upload-file ${{ env.LOCAL_ZIP_PATH }} \
+            "$FULL_ARTIFACT_URL"
+            
+          echo "ARTIFACT_URL=$FULL_ARTIFACT_URL" >> $GITHUB_ENV
+
+      # STAGE 10.5: Process Forced Artifact
+      - name: "Stage 10.5: Process Forced Artifact"
+        if: ${{ inputs.SKIP_BUILD == true }}
+        run: |
+          echo "SKIP_BUILD selected, using FORCED_ARTIFACT_URL..."
+          ARTIFACT_URL="${{ inputs.FORCED_ARTIFACT_URL }}"
+          FILE_NAME_ARTIFACT=$(basename "$ARTIFACT_URL")
+          
+          echo "ARTIFACT_URL=$ARTIFACT_URL" >> $GITHUB_ENV
+          echo "ARTIFACT_FILE_NAME=$FILE_NAME_ARTIFACT" >> $GITHUB_ENV
+
+      # STAGE 11: Deploy on Azure Container Apps (Replaces Cloud Run)
+      - name: "Stage 11: Deploy on Azure Container Apps"
+        if: ${{ inputs.DEPLOY_TYPE == 'CLOUD_RUN' || inputs.DEPLOY_TYPE == 'AZURE_CONTAINER_APPS' }}
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: "Execute Azure Container App Update"
+        if: ${{ inputs.DEPLOY_TYPE == 'CLOUD_RUN' || inputs.DEPLOY_TYPE == 'AZURE_CONTAINER_APPS' }}
+        uses: azure/CLI@v2
+        with:
+          inlineScript: |
+            # Se agrega ingress en un paso separado o configurado al crear, pero aquí ajustamos los recursos de actualización
+            az containerapp update \
+              --name ${{ inputs.AZURE_CONTAINER_APP_NAME }} \
+              --resource-group ${{ inputs.AZURE_RESOURCE_GROUP }} \
+              --image "${{ inputs.AZURE_CONTAINER_REGISTRY }}/paloit-devops/gcf/nginx-deploy:latest" \
+              --cpu 1.0 \
+              --memory 1.0Gi \
+              --revision-suffix ${{ env.REVISION_SUFFIX }} \
+              --set-env-vars \
+                nexus_user="${{ secrets.NEXUS_USER }}" \
+                nexus_password="${{ secrets.NEXUS_PASSWORD }}" \
+                ARTIFACT_URL="${{ env.ARTIFACT_URL }}" \
+                FILE_NAME_ARTIFACT="${{ env.ARTIFACT_FILE_NAME }}" \
+                ${{ env.DYNAMIC_ENV_VARS }}
+
+      # NOTIFY STAGE: MS Teams Notification (Optional)
+      - name: "Notify Status to MS Teams"
+        if: always() && secrets.MS_TEAMS_HOOK != ''
+        run: |
+          STATUS="${{ job.status }}"
+          COLOR="2EB886"
+          if [ "$STATUS" != "success" ]; then COLOR="A30200"; fi
+          
+          curl -H "Content-Type: application/json" \
+            -d "{\"@type\": \"MessageCard\", \"@context\": \"schema.org\", \"themeColor\": \"$COLOR\", \"summary\": \"Pipeline Status\", \"sections\": [{\"activityTitle\": \"Pipeline for ${{ inputs.PROJECT_NAME }} ended with status: $STATUS\"}]}" \
+            ${{ secrets.MS_TEAMS_HOOK }}
