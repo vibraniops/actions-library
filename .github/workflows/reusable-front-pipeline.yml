@@ -147,7 +147,7 @@ jobs:
         if: ${{ inputs.SKIP_HORUSEC == false }}
         run: |
           curl -fsSL https://raw.githubusercontent.com/ZupIT/horusec/main/deployments/scripts/install.sh | bash -s latest
-          horusec start \
+          horusec start -p="./" \
             --ignore="${{ inputs.HORUSEC_EXCLUSIONS }}" \
             --false-positive="${{ inputs.HORUSEC_FALSE_POSITIVES }}" \
             --risk-accept="${{ inputs.HORUSEC_ACCEPTED_RISKS }}" \
