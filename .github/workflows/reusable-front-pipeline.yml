@@ -247,12 +247,19 @@ jobs:
 
       # NOTIFY STAGE: MS Teams Notification (Optional)
       - name: "Notify Status to MS Teams"
-        if: always() && secrets.MS_TEAMS_HOOK != ''
+        if: always()
+        env:
+          MS_TEAMS_HOOK_URL: ${{ secrets.MS_TEAMS_HOOK }}
         run: |
+          if [ -z "$MS_TEAMS_HOOK_URL" ]; then
+            echo "No MS Teams hook provided. Skipping notification."
+            exit 0
+          fi
+          
           STATUS="${{ job.status }}"
           COLOR="2EB886"
           if [ "$STATUS" != "success" ]; then COLOR="A30200"; fi
           
           curl -H "Content-Type: application/json" \
             -d "{\"@type\": \"MessageCard\", \"@context\": \"schema.org\", \"themeColor\": \"$COLOR\", \"summary\": \"Pipeline Status\", \"sections\": [{\"activityTitle\": \"Pipeline for ${{ inputs.PROJECT_NAME }} ended with status: $STATUS\"}]}" \
-            ${{ secrets.MS_TEAMS_HOOK }}
+            $MS_TEAMS_HOOK_URL
