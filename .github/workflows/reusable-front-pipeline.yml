@@ -149,6 +149,7 @@ jobs:
           curl -fsSL https://raw.githubusercontent.com/ZupIT/horusec/main/deployments/scripts/install.sh | bash -s latest
           horusec start \
             -p="./" \
+            --disable-docker \
             --ignore="${{ inputs.HORUSEC_EXCLUSIONS }}" \
             --false-positive="${{ inputs.HORUSEC_FALSE_POSITIVES }}" \
             --risk-accept="${{ inputs.HORUSEC_ACCEPTED_RISKS }}" \
