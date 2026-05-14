@@ -114,6 +114,12 @@ on:
         required: true
       SONAR_TOKEN:
         required: true
+      AZURE_CLIENT_ID:
+        required: false
+      AZURE_TENANT_ID:
+        required: false
+      AZURE_SUBSCRIPTION_ID:
+        required: false
 
 jobs:
   ci-cd-process:
