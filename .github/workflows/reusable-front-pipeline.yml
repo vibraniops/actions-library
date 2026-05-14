@@ -75,6 +75,14 @@ on:
         type: string
         required: true
         description: "Name of the project"
+      SONAR_PROJECT_KEY:
+        type: string
+        default: ""
+        description: "Explicit SonarQube project key"
+      SONAR_ORGANIZATION:
+        type: string
+        default: ""
+        description: "SonarCloud organization key (if applicable)"
       AZURE_CONTAINER_APP_NAME:
         type: string
         required: true
@@ -180,8 +188,9 @@ jobs:
         uses: sonarsource/sonarqube-scan-action@v3
         with:
           args: >
-            -Dsonar.projectKey=${{ inputs.PROJECT_NAME }}
+            -Dsonar.projectKey=${{ inputs.SONAR_PROJECT_KEY != '' && inputs.SONAR_PROJECT_KEY || inputs.PROJECT_NAME }}
             -Dsonar.projectName=${{ inputs.PROJECT_NAME }}
+            ${{ inputs.SONAR_ORGANIZATION != '' && format('-Dsonar.organization={0}', inputs.SONAR_ORGANIZATION) || '' }}
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
