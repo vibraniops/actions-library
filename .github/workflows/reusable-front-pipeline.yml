@@ -87,17 +87,21 @@ on:
         type: string
         required: true
         description: "Azure Container Registry domain (e.g., myregistry.azurecr.io)"
+      CONTAINER_IMAGE_NAME:
+        type: string
+        default: "paloit-devops/gcf/nginx-deploy:latest"
+        description: "Container image to deploy on Azure Container Apps"
+      USE_OIDC_AUTH:
+        type: boolean
+        default: false
+        description: "Use OIDC authentication instead of Service Principal"
     secrets:
-      AZURE_CREDENTIALS:
-        required: true
       NEXUS_USER:
         required: true
       NEXUS_PASSWORD:
         required: true
       SONAR_TOKEN:
         required: true
-      MS_TEAMS_HOOK:
-        required: false
 
 jobs:
   ci-cd-process:
@@ -126,21 +130,22 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: ${{ inputs.NODEJS_VERSION }}
+          cache: 'npm'
 
       # STAGE 3: Config loading
-      - name: "Stage 3: Load Config"
-        id: load_config
-        run: |
-          CONFIG_FILE=".deploy/${{ env.DEPLOY_BRANCH }}/deploy-properties.json"
-          if [ -f "$CONFIG_FILE" ]; then
-            echo "Config file found. Loading parameters..."
-            # Parseamos el JSON a formato clave=valor compatible con Azure CLI
-            ENV_VARS=$(jq -r 'to_entries | map("\(.key)=\(.value|tostring)") | join(" ")' "$CONFIG_FILE")
-            echo "DYNAMIC_ENV_VARS=$ENV_VARS" >> $GITHUB_ENV
-          else
-            echo "Warning: Config file $CONFIG_FILE not found."
-            echo "DYNAMIC_ENV_VARS=" >> $GITHUB_ENV
-          fi
+      # - name: "Stage 3: Load Config"
+      #   id: load_config
+      #   run: |
+      #     CONFIG_FILE=".deploy/${{ env.DEPLOY_BRANCH }}/deploy-properties.json"
+      #     if [ -f "$CONFIG_FILE" ]; then
+      #       echo "Config file found. Loading parameters..."
+      #       # Parseamos el JSON a formato clave=valor compatible con Azure CLI
+      #       ENV_VARS=$(jq -r 'to_entries | map("\(.key)=\(.value|tostring)") | join(" ")' "$CONFIG_FILE")
+      #       echo "DYNAMIC_ENV_VARS=$ENV_VARS" >> $GITHUB_ENV
+      #     else
+      #       echo "Warning: Config file $CONFIG_FILE not found."
+      #       echo "DYNAMIC_ENV_VARS=" >> $GITHUB_ENV
+      #     fi
 
       # STAGE 4: Horusec SAST Scan
       - name: "Stage 4: Horusec SAST Scan"
@@ -209,34 +214,32 @@ jobs:
             
           echo "ARTIFACT_URL=$FULL_ARTIFACT_URL" >> $GITHUB_ENV
 
-      # STAGE 10.5: Process Forced Artifact
-      - name: "Stage 10.5: Process Forced Artifact"
-        if: ${{ inputs.SKIP_BUILD == true }}
-        run: |
-          echo "SKIP_BUILD selected, using FORCED_ARTIFACT_URL..."
-          ARTIFACT_URL="${{ inputs.FORCED_ARTIFACT_URL }}"
-          FILE_NAME_ARTIFACT=$(basename "$ARTIFACT_URL")
-          
-          echo "ARTIFACT_URL=$ARTIFACT_URL" >> $GITHUB_ENV
-          echo "ARTIFACT_FILE_NAME=$FILE_NAME_ARTIFACT" >> $GITHUB_ENV
-
-      # STAGE 11: Deploy on Azure Container Apps (Replaces Cloud Run)
-      - name: "Stage 11: Deploy on Azure Container Apps"
-        if: ${{ inputs.DEPLOY_TYPE == 'CLOUD_RUN' || inputs.DEPLOY_TYPE == 'AZURE_CONTAINER_APPS' }}
+      # STAGE 11: Deploy on Azure Container Apps
+      - name: "Stage 11: Login to Azure (OIDC)"
+        if: ${{ inputs.DEPLOY_TYPE == 'AZURE_CONTAINER_APPS' && inputs.USE_OIDC_AUTH == true }}
         uses: azure/login@v2
         with:
-          creds: ${{ secrets.AZURE_CREDENTIALS }}
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: "Stage 11b: Login to Azure (Service Principal)"
+        if: ${{ inputs.DEPLOY_TYPE == 'AZURE_CONTAINER_APPS' && inputs.USE_OIDC_AUTH == false }}
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
       - name: "Execute Azure Container App Update"
-        if: ${{ inputs.DEPLOY_TYPE == 'CLOUD_RUN' || inputs.DEPLOY_TYPE == 'AZURE_CONTAINER_APPS' }}
+        if: ${{ inputs.DEPLOY_TYPE == 'AZURE_CONTAINER_APPS' }}
         uses: azure/CLI@v2
         with:
           inlineScript: |
-            # Se agrega ingress en un paso separado o configurado al crear, pero aquí ajustamos los recursos de actualización
             az containerapp update \
               --name ${{ inputs.AZURE_CONTAINER_APP_NAME }} \
               --resource-group ${{ inputs.AZURE_RESOURCE_GROUP }} \
-              --image "${{ inputs.AZURE_CONTAINER_REGISTRY }}/paloit-devops/gcf/nginx-deploy:latest" \
+              --image "${{ inputs.AZURE_CONTAINER_REGISTRY }}/${{ inputs.CONTAINER_IMAGE_NAME }}" \
               --cpu 1.0 \
               --memory 1.0Gi \
               --revision-suffix ${{ env.REVISION_SUFFIX }} \
@@ -246,22 +249,3 @@ jobs:
                 ARTIFACT_URL="${{ env.ARTIFACT_URL }}" \
                 FILE_NAME_ARTIFACT="${{ env.ARTIFACT_FILE_NAME }}" \
                 ${{ env.DYNAMIC_ENV_VARS }}
-
-      # NOTIFY STAGE: MS Teams Notification (Optional)
-      - name: "Notify Status to MS Teams"
-        if: always()
-        env:
-          MS_TEAMS_HOOK_URL: ${{ secrets.MS_TEAMS_HOOK }}
-        run: |
-          if [ -z "$MS_TEAMS_HOOK_URL" ]; then
-            echo "No MS Teams hook provided. Skipping notification."
-            exit 0
-          fi
-          
-          STATUS="${{ job.status }}"
-          COLOR="2EB886"
-          if [ "$STATUS" != "success" ]; then COLOR="A30200"; fi
-          
-          curl -H "Content-Type: application/json" \
-            -d "{\"@type\": \"MessageCard\", \"@context\": \"schema.org\", \"themeColor\": \"$COLOR\", \"summary\": \"Pipeline Status\", \"sections\": [{\"activityTitle\": \"Pipeline for ${{ inputs.PROJECT_NAME }} ended with status: $STATUS\"}]}" \
-            $MS_TEAMS_HOOK_URL
