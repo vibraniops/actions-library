@@ -15,18 +15,6 @@ on:
         type: boolean
         default: false
         description: "Indicates if Build Stage must be skipped"
-      FORCED_ARTIFACT_URL:
-        type: string
-        default: ""
-        description: "Use only in case than you selected skip build"
-      GIT_RELEASE_BRANCH:
-        type: string
-        default: "master"
-        description: "Gitlab Release Branch (Legacy reference)"
-      GIT_INTEGRATION_BRANCH:
-        type: string
-        default: "develop"
-        description: "Gitlab Integration Branch (Legacy reference)"
       GET_DEPENDENCIES_COMMAND:
         type: string
         default: "npm ci"
@@ -142,10 +130,8 @@ jobs:
         run: |
           if [ "${{ inputs.IS_RELEASE }}" = "true" ]; then
             echo "NEXUS_REPO=repository/nodejs-release" >> $GITHUB_ENV
-            echo "DEPLOY_BRANCH=pro" >> $GITHUB_ENV
           else
             echo "NEXUS_REPO=repository/nodejs-snapshot" >> $GITHUB_ENV
-            echo "DEPLOY_BRANCH=${{ inputs.ENVIRONMENT }}" >> $GITHUB_ENV
           fi
           # Unique revision suffix creation (Legacy Jenkins logic)
           echo "REVISION_SUFFIX=${{ github.run_number }}-$(date +%s)" >> $GITHUB_ENV
@@ -159,21 +145,6 @@ jobs:
         with:
           node-version: ${{ inputs.NODEJS_VERSION }}
           cache: 'npm'
-
-      # STAGE 3: Config loading
-      # - name: "Stage 3: Load Config"
-      #   id: load_config
-      #   run: |
-      #     CONFIG_FILE=".deploy/${{ env.DEPLOY_BRANCH }}/deploy-properties.json"
-      #     if [ -f "$CONFIG_FILE" ]; then
-      #       echo "Config file found. Loading parameters..."
-      #       # Parseamos el JSON a formato clave=valor compatible con Azure CLI
-      #       ENV_VARS=$(jq -r 'to_entries | map("\(.key)=\(.value|tostring)") | join(" ")' "$CONFIG_FILE")
-      #       echo "DYNAMIC_ENV_VARS=$ENV_VARS" >> $GITHUB_ENV
-      #     else
-      #       echo "Warning: Config file $CONFIG_FILE not found."
-      #       echo "DYNAMIC_ENV_VARS=" >> $GITHUB_ENV
-      #     fi
 
       # STAGE 4: Horusec SAST Scan
       - name: "Stage 4: Horusec SAST Scan"
@@ -208,9 +179,9 @@ jobs:
         uses: sonarsource/sonarqube-scan-action@v3
         with:
           args: >
-            -Dsonar.projectKey=${{ vars.SONAR_PROJECT_KEY }}
-            -Dsonar.projectName=${{ vars.PROJECT_NAME }}
-            -Dsonar.host.url=${{ vars.SONAR_HOST_URL }}
+            -Dsonar.projectKey=${{ inputs.SONAR_PROJECT_KEY != '' && inputs.SONAR_PROJECT_KEY || inputs.PROJECT_NAME }}
+            -Dsonar.projectName=${{ inputs.PROJECT_NAME }}
+            -Dsonar.host.url=${{ inputs.SONAR_HOST_URL }}
             ${{ inputs.SONAR_ORGANIZATION != '' && format('-Dsonar.organization={0}', inputs.SONAR_ORGANIZATION) || '' }}
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
@@ -290,5 +261,4 @@ jobs:
                 nexus_user="${{ secrets.NEXUS_USER }}" \
                 nexus_password="${{ secrets.NEXUS_PASSWORD }}" \
                 ARTIFACT_URL="${{ env.ARTIFACT_URL }}" \
-                FILE_NAME_ARTIFACT="${{ env.ARTIFACT_FILE_NAME }}" \
-                ${{ env.DYNAMIC_ENV_VARS }}
+                FILE_NAME_ARTIFACT="${{ env.ARTIFACT_FILE_NAME }}"
