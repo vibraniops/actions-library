@@ -25,7 +25,7 @@ on:
         description: "Custom Build command"
       APP_OUTPUT_PATH:
         type: string
-        default: "dist"
+        default: "build"
         description: "Code Output directory"
       SKIP_HORUSEC:
         type: boolean
