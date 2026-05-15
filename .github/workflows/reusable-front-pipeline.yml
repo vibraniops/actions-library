@@ -209,13 +209,28 @@ jobs:
       - name: "Stage 9: Compressing Files"
         if: ${{ inputs.SKIP_BUILD == false }}
         run: |
+          # 1. Validar que la ruta de origen exista y no esté vacía
+          if [ ! -d "${{ inputs.APP_OUTPUT_PATH }}" ] || [ -z "$(ls -A ${{ inputs.APP_OUTPUT_PATH }} 2>/dev/null)" ]; then
+            echo "Error: APP_OUTPUT_PATH [${{ inputs.APP_OUTPUT_PATH }}] no existe o está vacía."
+            exit 1
+          fi
+
+          # 2. Crear directorio temporal
           mkdir -p _app
-          cp package.json _app/ || true
-          cp -r ${{ inputs.APP_OUTPUT_PATH }}/* _app/ || true
           
-          FILE_NAME="frontend-1.0.0-${{ env.REVISION_SUFFIX }}.zip"
+          # 3. Copiar archivos asegurando que falle si hay errores (sin || true)
+          cp package.json _app/
+          cp -r ${{ inputs.APP_OUTPUT_PATH }}/. _app/
+          
+          # 4. Leer nombre y versión dinámicamente desde package.json (opcional, como en Jenkins)
+          APP_NAME=$(node -p "require('./package.json').name")
+          APP_VERSION=$(node -p "require('./package.json').version")
+          FILE_NAME="${APP_NAME}-${APP_VERSION}-${{ env.REVISION_SUFFIX }}.zip"
+          
+          # 5. Comprimir el contenido
           cd _app && zip -r ../$FILE_NAME . && cd ..
           
+          # 6. Exportar variables de entorno
           echo "ARTIFACT_FILE_NAME=$FILE_NAME" >> $GITHUB_ENV
           echo "LOCAL_ZIP_PATH=$(pwd)/$FILE_NAME" >> $GITHUB_ENV
 
@@ -224,7 +239,7 @@ jobs:
         if: ${{ inputs.SKIP_BUILD == false }}
         run: |
           NEXUS_BASE_URL="http://nexus.gcp.palo-it.net" # URL Base real de Nexus
-          FULL_ARTIFACT_URL="${NEXUS_BASE_URL}/${{ env.NEXUS_REPO }}/customer-projects/${{ inputs.PROJECT_NAME }}/frontend/${{ env.ARTIFACT_FILE_NAME }}"
+          FULL_ARTIFACT_URL="${NEXUS_BASE_URL}/${{ env.NEXUS_REPO }}/customer-projects/palo-points/${{ inputs.PROJECT_NAME }}/frontend/${{ env.ARTIFACT_FILE_NAME }}"
           
           echo "Uploading $ARTIFACT_FILE_NAME to Nexus..."
           
