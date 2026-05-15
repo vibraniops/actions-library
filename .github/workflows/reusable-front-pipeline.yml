@@ -107,6 +107,14 @@ on:
         type: boolean
         default: false
         description: "Use OIDC authentication instead of Service Principal"
+      NEXUS_BASE_URL:
+        type: string
+        default: "http://nexus.gcp.palo-it.net"
+        description: "URL base de Nexus"
+      NEXUS_PROJECT_PATH:
+        type: string
+        default: "customer-projects/default-project"
+        description: "Ruta base dentro del repositorio de Nexus"
     secrets:
       NEXUS_USER:
         required: true
@@ -240,8 +248,8 @@ jobs:
       - name: "Stage 10: Upload Artifacts to Nexus"
         if: ${{ inputs.SKIP_BUILD == false }}
         run: |
-          NEXUS_BASE_URL="http://nexus.gcp.palo-it.net" # URL Base real de Nexus
-          FULL_ARTIFACT_URL="${NEXUS_BASE_URL}/${{ env.NEXUS_REPO }}/customer-projects/palo-points/${{ inputs.PROJECT_NAME }}/frontend/${{ env.ARTIFACT_FILE_NAME }}"
+          NEXUS_BASE_URL="${{ inputs.NEXUS_BASE_URL }}"
+          FULL_ARTIFACT_URL="${NEXUS_BASE_URL}/${{ env.NEXUS_REPO }}/${{ inputs.NEXUS_PROJECT_PATH }}/${{ inputs.PROJECT_NAME }}/frontend/${{ env.ARTIFACT_FILE_NAME }}"
           
           echo "Uploading $ARTIFACT_FILE_NAME to Nexus..."
           
