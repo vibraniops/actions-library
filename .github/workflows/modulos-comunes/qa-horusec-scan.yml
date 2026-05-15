@@ -1,0 +1,17 @@
+name: 'Horusec Security Scan'
+description: 'Runs Horusec security scan'
+
+inputs:
+  horusec_cli_version:
+    description: 'Horusec CLI version'
+    required: false
+    default: 'v2.10.0'
+
+runs:
+  using: "composite"
+  steps:
+    - name: Run Horusec-CLI
+      run: |
+        curl -sSL https://raw.githubusercontent.com/ZupIT/horusec/main/deployments/scripts/install.sh | bash -s \${{ inputs.horusec_cli_version }}
+        horusec-cli start -p . -P ${{ github.workspace }}
+      shell: bash

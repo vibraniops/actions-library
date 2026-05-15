@@ -1,0 +1,33 @@
+name: 'Deploy to AKS'
+description: 'Deploys to Azure Kubernetes Service'
+
+inputs:
+  azure_credentials:
+    description: 'Azure credentials'
+    required: true
+  cluster_name:
+    description: 'AKS cluster name'
+    required: true
+  resource_group:
+    description: 'Azure resource group'
+    required: true
+  manifests:
+    description: 'Path to Kubernetes manifests'
+    required: true
+
+runs:
+  using: "composite"
+  steps:
+    - name: Set up Kubeconfig
+      uses: azure/aks-set-context@v1
+      with:
+        creds: \${{ inputs.azure_credentials }}
+        cluster-name: \${{ inputs.cluster_name }}
+        resource-group: \${{ inputs.resource_group }}
+
+    - name: Deploy to AKS
+      uses: Azure/k8s-deploy@v1
+      with:
+        manifests: \${{ inputs.manifests }}
+        images: '' # Image details would be passed here
+        imagepullsecrets: '' # Secrets for private registries

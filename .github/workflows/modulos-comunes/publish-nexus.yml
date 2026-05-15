@@ -1,0 +1,32 @@
+name: 'Publish to Nexus'
+description: 'Publishes artifacts to Nexus'
+
+inputs:
+  nexus_username:
+    description: 'Nexus username'
+    required: true
+  nexus_password:
+    description: 'Nexus password'
+    required: true
+  nexus_url:
+    description: 'Nexus URL'
+    required: true
+  nexus_repository:
+    description: 'Nexus repository'
+    required: true
+  artifact_path:
+    description: 'Path to the artifact to publish'
+    required: true
+
+runs:
+  using: "composite"
+  steps:
+    - name: Publish to Nexus
+      uses: sonatype-nexus-community/nexus-repo-github-action@master
+      with:
+        serverUrl: \${{ inputs.nexus_url }}
+        username: \${{ inputs.nexus_username }}
+        password: \${{ inputs.nexus_password }}
+        repository: \${{ inputs.nexus_repository }}
+        format: maven2 # This might need to be parameterized
+        assets: \${{ inputs.artifact_path }}

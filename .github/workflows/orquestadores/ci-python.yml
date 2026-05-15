@@ -1,0 +1,87 @@
+name: 'CI for Python'
+on:
+  workflow_call:
+    inputs:
+      python-version:
+        required: false
+        type: string
+        default: '3.9'
+      sonar_project_key:
+        required: true
+        type: string
+      nexus_repository:
+        required: true
+        type: string
+      artifact_path:
+        required: true
+        type: string
+    secrets:
+      SONAR_TOKEN:
+        required: true
+      SONAR_HOST_URL:
+        required: true
+      NEXUS_USERNAME:
+        required: true
+      NEXUS_PASSWORD:
+        required: true
+      NEXUS_URL:
+        required: true
+
+jobs:
+  build-and-test:
+    name: Build and Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: \${{ inputs.python-version }}
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+
+      - name: Test with pytest
+        run: |
+          pip install pytest
+          pytest
+
+  security-scan:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    needs: build-and-test
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Horusec Scan
+        uses: ./../modulos-comunes/qa-horusec-scan.yml
+
+      - name: SonarQube Scan
+        uses: ./../modulos-comunes/qa-sonar-scan.yml
+        with:
+          sonar_project_key: \${{ inputs.sonar_project_key }}
+          sonar_token: \${{ secrets.SONAR_TOKEN }}
+          sonar_host_url: \${{ secrets.SONAR_HOST_URL }}
+
+  publish:
+    name: Publish Artifact
+    runs-on: ubuntu-latest
+    needs: security-scan
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Publish to Nexus
+        uses: ./../modulos-comunes/publish-nexus.yml
+        with:
+          nexus_username: \${{ secrets.NEXUS_USERNAME }}
+          nexus_password: \${{ secrets.NEXUS_PASSWORD }}
+          nexus_url: \${{ secrets.NEXUS_URL }}
+          nexus_repository: \${{ inputs.nexus_repository }}
+          artifact_path: \${{ inputs.artifact_path }}

@@ -1,0 +1,25 @@
+name: 'SonarQube Scan'
+description: 'Runs SonarQube scan'
+
+inputs:
+  sonar_project_key:
+    description: 'SonarQube project key'
+    required: true
+  sonar_token:
+    description: 'SonarQube token'
+    required: true
+  sonar_host_url:
+    description: 'SonarQube host URL'
+    required: true
+
+runs:
+  using: "composite"
+  steps:
+    - name: SonarQube Scan
+      uses: sonarsource/sonarqube-scan-action@master
+      with:
+        projectBaseDir: .
+      env:
+        SONAR_PROJECT_KEY: \${{ inputs.sonar_project_key }}
+        SONAR_TOKEN: \${{ inputs.sonar_token }}
+        SONAR_HOST_URL: \${{ inputs.sonar_host_url }}
